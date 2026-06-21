@@ -6,7 +6,7 @@
     {
       "name": "gavel",
       "source": ".",
-      "description": "Multi-model fuse (Claude + Codex + Gemini)."
+      "description": "Multi-model fuse (Claude + Codex + agy)."
     }
   ]
 }

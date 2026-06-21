@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// gavel — zero-dependency runner that shells out to advisor model CLIs (codex, gemini, …).
+// gavel — zero-dependency runner that shells out to advisor model CLIs (codex, agy, …).
 // Subcommands: setup | run | fuse. See ../CLAUDE.md for the contracts this implements.
 //
 // Design notes:
 // - Advisors run READ-ONLY; only Claude (the caller) ever writes. Each provider hard-codes a
-//   read-only policy and the prompt is always fed over stdin (never argv) — see PROVIDERS.
+//   read-only policy and gets the prompt without a shell — codex on stdin, agy as an argv arg — see PROVIDERS.
 // - To add a provider, add one entry to PROVIDERS. Everything else (setup/run/fuse, config,
 //   panel) is data-driven off that map.
 import { spawn } from "node:child_process";
@@ -89,8 +89,8 @@ async function probe(bin, args = ["--version"]) {
 }
 
 // --- provider registry -----------------------------------------------------
-// Each provider encapsulates: how to run it READ-ONLY with the prompt on stdin, how to parse its
-// output, its default model + model env override, and how to check auth. Add a provider here.
+// Each provider encapsulates: how to run it READ-ONLY with the prompt fed without a shell (codex on
+// stdin, agy on argv), how to parse its output, its default model + env override, and how to check auth.
 
 const PROVIDERS = {
   codex: {
@@ -131,47 +131,51 @@ const PROVIDERS = {
     },
   },
 
-  gemini: {
-    bin: "gemini",
-    tested: "0.46.0",
-    // gemini has no OS read-only sandbox and `--approval-mode plan` only blocks edit tools (the model
-    // can still write via run_shell_command — verified). So we run it ISOLATED: a throwaway cwd with
-    // PWD/OLDPWD/INIT_CWD scrubbed (see runProvider), so it won't discover or make relative/cwd writes
-    // to your project. This is NOT a hardened sandbox — gemini still inherits $HOME (needed for auth)
-    // and can act on any absolute path it is handed, so don't treat it as a boundary for untrusted
-    // input. The run() flags are defense-in-depth + headless plumbing.
+  agy: {
+    bin: "agy",
+    tested: "1.0.9",
+    // agy has NO OS read-only sandbox: `--print` can still invoke tools,
+    // `--sandbox` only adds terminal restrictions, and `--dangerously-skip-permissions` auto-approves
+    // writes. So we run it ISOLATED (the safe default): a throwaway cwd with PWD/OLDPWD/INIT_CWD
+    // scrubbed (see runProvider), so it can't discover the repo path or make relative/cwd writes into
+    // it. This is isolation, NOT a hardened sandbox — agy still inherits $HOME (needed for auth) and
+    // can act on any absolute path it is handed, so don't treat it as a boundary for untrusted input.
     isolation: "isolated",
-    // Preferred default; if the account can't use it, runProvider falls back to the gemini CLI default.
-    defaultModel: "gemini-3.1-pro",
-    modelEnv: "GAVEL_GEMINI_MODEL",
-    installHint: "install with `npm install -g @google/gemini-cli`",
-    authHint: "run `!gemini` once to log in (OAuth) or set GEMINI_API_KEY",
+    // Preferred default; if the account can't use it, runProvider falls back to the agy CLI default.
+    defaultModel: "gemini-3-pro",
+    modelEnv: "GAVEL_AGY_MODEL",
+    installHint: "install the `agy` CLI — see https://antigravity.google",
+    authHint: "run `!agy` once to sign in (Google OAuth)",
     checkAuth() {
-      if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_API_KEY)
-        return { authed: true, via: "env (GEMINI_API_KEY/GOOGLE_API_KEY)" };
-      const p = path.join(os.homedir(), ".gemini", "oauth_creds.json");
+      // After `agy` sign-in completes, its OAuth creds live under ~/.gemini/antigravity-cli/.
+      const p = path.join(os.homedir(), ".gemini", "antigravity-cli", "oauth_creds.json");
       return fs.existsSync(p) ? { authed: true, via: p } : { authed: false, via: null };
     },
     async run({ prompt, model, cwd, timeoutMs, env }) {
-      // --skip-trust unblocks headless mode in the fresh cwd; --approval-mode plan blocks edit tools;
-      // prompt is piped on stdin (never argv); --output-format json so we can require a real answer.
-      // model may be empty (fallback) → omit -m so gemini uses its own default model.
-      const args = ["--skip-trust", "--approval-mode", "plan", "--output-format", "json"];
-      if (model) args.push("-m", model);
-      const r = await runCommand("gemini", args, { cwd, timeoutMs, input: prompt, env });
-      if (r.spawnError) return { ok: false, error: `gemini CLI not found — ${this.installHint}, then ${this.authHint}.` };
-      if (r.timedOut) return { ok: false, error: `timed out after ${Math.round(timeoutMs / 1000)}s` };
-      const parsed = extractJson((r.stdout || "").trim()) || extractJson((r.stderr || "").trim());
-      const parsedErr = parsed?.error
-        ? (typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error)))
-        : null;
-      if (parsedErr) return { ok: false, error: parsedErr };
-      if (r.code !== 0) return { ok: false, error: errorSnippet(r) || `gemini exited with code ${r.code}` };
-      // Require a real JSON answer. Do NOT fall back to raw stdout — that would launder a banner,
-      // stats-only output, or an older CLI ignoring --output-format json into a fake [ok] answer.
-      const text = typeof parsed?.response === "string" ? parsed.response.trim() : "";
-      if (!text) return { ok: false, error: errorSnippet(r) || "gemini did not return a JSON response (the CLI may be too old, or not support --output-format json)" };
-      return { ok: true, text };
+      // agy `--print` takes the prompt as the flag's VALUE (argv) — it has no stdin/file prompt input.
+      // We pass it through spawn()'s args array (NEVER a shell), so quotes / $(...) / backticks stay
+      // literal, exactly as they would on stdin — same injection-safety. Tradeoff vs stdin: argv is
+      // visible in `ps` while agy runs, so don't put secrets in an advisor prompt. `--print-timeout`
+      // matches our outer timeout (its default is only 5m) so agy doesn't self-abort before we do.
+      const secs = Math.max(1, Math.round(timeoutMs / 1000));
+      const args = ["--print", prompt, "--print-timeout", `${secs}s`];
+      if (model) args.push("--model", model); // empty (fallback) → omit so agy uses its own default
+      const r = await runCommand("agy", args, { cwd, timeoutMs, env }); // no stdin: prompt is on argv
+      if (r.spawnError) return { ok: false, error: `agy CLI not found — ${this.installHint}, then ${this.authHint}.` };
+      if (r.timedOut) return { ok: false, error: `timed out after ${secs}s` };
+      const out = (r.stdout || "").trim();
+      // agy exits 0 even when it did NOT answer — e.g. it prints its OAuth prompt to stdout when not
+      // signed in (verified), or "unknown model name <m>" for a bad model. Trusting the exit code +
+      // raw stdout would launder those into a fake [ok] (and the model fallback, which only fires on a
+      // failed run, would never trigger). So detect those signatures explicitly, exit code aside.
+      const signal = `${out}\n${r.stderr || ""}`;
+      if (/Authentication required\. Please visit the URL to log in|paste the authorization code here|Waiting for authentication \(timeout/i.test(signal))
+        return { ok: false, error: `agy is not signed in — ${this.authHint}.` };
+      const modelErr = signal.split("\n").find((l) => /unknown model name/i.test(l));
+      if (modelErr) return { ok: false, error: modelErr.trim() };
+      if (r.code !== 0) return { ok: false, error: errorSnippet(r) || `agy exited with code ${r.code}` };
+      if (!out) return { ok: false, error: errorSnippet(r) || "agy returned no output" };
+      return { ok: true, text: out };
     },
   },
 };
@@ -221,7 +225,7 @@ function resolveModel(name, explicit, config) {
 }
 
 // Heuristic: does this provider error mean "the requested model isn't usable for this account"?
-// Covers codex ("... model is not supported ...") and gemini ("Requested entity was not found.").
+// Covers codex ("... model is not supported ...") and agy ("unknown model name ...").
 function looksLikeModelError(error) {
   const e = error || "";
   return /\b(model|requested entity)\b/i.test(e) &&
@@ -584,7 +588,7 @@ function cmdConfigShow(cwd, opts) {
   lines.push("Sources (low→high precedence; later overrides earlier):");
   lines.push(`  ~/.gavel/config.json  ${fs.existsSync(userP) ? "present" : "absent"}`);
   lines.push(`  ./.gavel.json         ${fs.existsSync(projP) ? "present" : "absent"}`);
-  lines.push(`  env vars: GAVEL_TIMEOUT, GAVEL_CODEX_MODEL, GAVEL_GEMINI_MODEL`);
+  lines.push(`  env vars: GAVEL_TIMEOUT, GAVEL_CODEX_MODEL, GAVEL_AGY_MODEL`);
   lines.push("");
   lines.push("Change with: gavel config set <key> <value>  (add --project for this repo only)");
   lines.push(`  e.g. gavel config set timeout 600   ·   gavel config set codex.model gpt-5.5`);

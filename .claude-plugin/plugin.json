@@ -1,7 +1,7 @@
 {
   "name": "gavel",
   "version": "0.3.0",
-  "description": "Fuse the Claude Code model with OpenAI Codex and Google Gemini: query all three in parallel, then Claude judges, synthesizes, and acts.",
+  "description": "Fuse the Claude Code model with OpenAI Codex and agy: query all three in parallel, then Claude judges, synthesizes, and acts.",
   "author": { "name": "junkim", "email": "junkim100@gmail.com" },
   "homepage": "https://github.com/junkim100/gavel",
   "repository": "https://github.com/junkim100/gavel",

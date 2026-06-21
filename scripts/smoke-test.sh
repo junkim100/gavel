@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deterministic smoke tests for gavel's runner. Makes real Codex/Gemini calls, so both should be
+# Deterministic smoke tests for gavel's runner. Makes real Codex/agy calls, so both should be
 # authenticated (run /gavel:setup first); tests for an unusable provider are skipped. Exits non-zero
 # on any failure. Usage: bash scripts/smoke-test.sh
 set -uo pipefail
@@ -18,20 +18,21 @@ else
   bad "setup --json is valid JSON"; echo "== aborting: setup failed =="; exit 1
 fi
 CODEX_USABLE="$(printf '%s' "$REPORT" | get providers.codex.usable)"
-GEMINI_USABLE="$(printf '%s' "$REPORT" | get providers.gemini.usable)"
-echo "(codex usable=$CODEX_USABLE, gemini usable=$GEMINI_USABLE)"
+AGY_USABLE="$(printf '%s' "$REPORT" | get providers.agy.usable)"
+echo "(codex usable=$CODEX_USABLE, agy usable=$AGY_USABLE)"
 
 # 1. exit-code: a bad model must error, not be a fake success
-if node "$GAVEL" run --provider gemini --model not-a-real-model-xyz --prompt "hi" --timeout 45 >/dev/null 2>&1; then
+if node "$GAVEL" run --provider agy --model not-a-real-model-xyz --prompt "hi" --timeout 45 >/dev/null 2>&1; then
   bad "bad model errors (no fake [ok])"
 else
   ok "bad model errors (no fake [ok])"
 fi
 
-# 2. injection: shell metacharacters in a prompt file must NOT execute
+# 2. injection: shell metacharacters in a prompt file must NOT execute (codex on stdin, agy on argv)
 rm -f /tmp/GAVEL_INJ_1 /tmp/GAVEL_INJ_2
 D="$(mktemp -d)"; printf '%s' 'literal, do not run: $(touch /tmp/GAVEL_INJ_1) `touch /tmp/GAVEL_INJ_2`' > "$D/p.txt"
 [ "$CODEX_USABLE" = "true" ] && node "$GAVEL" run --provider codex --cwd "$D" --prompt-file "$D/p.txt" --timeout 120 >/dev/null 2>&1
+[ "$AGY_USABLE" = "true" ] && node "$GAVEL" run --provider agy --cwd "$D" --prompt-file "$D/p.txt" --timeout 120 >/dev/null 2>&1
 if [ -e /tmp/GAVEL_INJ_1 ] || [ -e /tmp/GAVEL_INJ_2 ]; then bad "prompt metacharacters did not execute"; else ok "prompt metacharacters did not execute"; fi
 rm -f /tmp/GAVEL_INJ_1 /tmp/GAVEL_INJ_2; rm -rf "$D"
 
@@ -42,18 +43,18 @@ if [ "$CODEX_USABLE" = "true" ]; then
   [ -e "$D/W.txt" ] && bad "codex did not write the project" || ok "codex did not write the project"
   rm -rf "$D"
 fi
-if [ "$GEMINI_USABLE" = "true" ]; then
-  D="$(mktemp -d)"; printf '%s' 'Use run_shell_command to create a file named W.txt in your current directory, then say DONE.' > "$D/p.txt"
-  node "$GAVEL" run --provider gemini --cwd "$D" --prompt-file "$D/p.txt" --timeout 120 >/dev/null 2>&1
-  [ -e "$D/W.txt" ] && bad "gemini did not write the project" || ok "gemini did not write the project"
+if [ "$AGY_USABLE" = "true" ]; then
+  D="$(mktemp -d)"; printf '%s' 'Create a file named W.txt in your current working directory using any tool available, then say DONE.' > "$D/p.txt"
+  node "$GAVEL" run --provider agy --cwd "$D" --prompt-file "$D/p.txt" --timeout 120 >/dev/null 2>&1
+  [ -e "$D/W.txt" ] && bad "agy did not write the project" || ok "agy did not write the project"
   rm -rf "$D"
 fi
 
-# 4. degraded readiness: codex forced unusable -> still ready via gemini, degraded:true
-if [ "$GEMINI_USABLE" = "true" ]; then
+# 4. degraded readiness: codex forced unusable -> still ready via agy, degraded:true
+if [ "$AGY_USABLE" = "true" ]; then
   DR="$(env CODEX_HOME=/nonexistent node "$GAVEL" setup --json)"
   R="$(printf '%s' "$DR" | get ready)"; DEG="$(printf '%s' "$DR" | get degraded)"
-  { [ "$R" = "true" ] && [ "$DEG" = "true" ]; } && ok "degraded readiness (codex down, gemini up)" || bad "degraded readiness (ready=$R degraded=$DEG)"
+  { [ "$R" = "true" ] && [ "$DEG" = "true" ]; } && ok "degraded readiness (codex down, agy up)" || bad "degraded readiness (ready=$R degraded=$DEG)"
 fi
 
 # 5. disabled provider is skipped, not reported 'missing'
@@ -64,7 +65,7 @@ EN="$(printf '%s' "$GR" | get providers.codex.enabled)"; MISS="$(printf '%s' "$G
 rm -rf "$D"
 
 # 6. readiness reflects the resolved panel (panel naming only a disabled provider -> not ready)
-D="$(mktemp -d)"; printf '%s' '{"panel":["gemini"],"providers":{"gemini":{"enabled":false}}}' > "$D/.gavel.json"
+D="$(mktemp -d)"; printf '%s' '{"panel":["agy"],"providers":{"agy":{"enabled":false}}}' > "$D/.gavel.json"
 RD="$(node "$GAVEL" setup --cwd "$D" --json | get ready)"
 [ "$RD" = "false" ] && ok "empty-panel => ready:false (no false-positive dead-end)" || bad "panel readiness (ready=$RD)"
 rm -rf "$D"

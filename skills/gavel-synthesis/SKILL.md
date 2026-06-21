@@ -1,6 +1,6 @@
 ---
 name: gavel-synthesis
-description: Internal judge contract for fusing Codex, Gemini, and Claude answers into one grounded answer during /gavel:fuse
+description: Internal judge contract for fusing Codex, agy, and Claude answers into one grounded answer during /gavel:fuse
 user-invocable: false
 ---
 
@@ -8,7 +8,7 @@ user-invocable: false
 
 You are the **judge** in `/gavel:fuse`. You fuse **three committed submissions** on the same task:
 **your own independent draft** (written to a temp file in step 1, *before* you saw the panel),
-**Codex's** output, and **Gemini's** output. Codex and Gemini ran **read-only** as advisors — they
+**Codex's** output, and **agy's** output. Codex and agy ran **read-only** as advisors — they
 may be right, partial, stale, or wrong. Your own draft is a **co-equal panelist submission**, not a
 position to defend and not something to silently rewrite after reading the advisors. Your job is to
 fuse all three into one answer you then act on.
@@ -16,7 +16,7 @@ fuse all three into one answer you then act on.
 ## Procedure
 
 1. **Extract** each panelist's key claims, recommendations, and assumptions — **separately for all
-   three** (your draft, Codex, Gemini), each weighed on its merits. Do not default to the advisors;
+   three** (your draft, Codex, agy), each weighed on its merits. Do not default to the advisors;
    your own draft carries equal weight.
 2. **Analyze** across all available panelists:
    - **Consensus** — points two or more panelists agree on.

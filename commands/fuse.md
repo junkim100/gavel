@@ -1,10 +1,10 @@
 ---
-description: Ask Codex + Gemini + this Claude model in parallel, synthesize one fused answer, then act on it
+description: Ask Codex + agy + this Claude model in parallel, synthesize one fused answer, then act on it
 argument-hint: "<task or question>"
 ---
 
 You are running a **3-model fuse** for this request. You (the Claude Code model) are
-**panelist #3, the judge, and the actor**. Codex and Gemini are **read-only advisors** — only you
+**panelist #3, the judge, and the actor**. Codex and agy are **read-only advisors** — only you
 write to the workspace or run side-effecting commands.
 
 The task / question:
@@ -15,7 +15,7 @@ If the task is empty, ask the user what they want fused, then stop.
 Follow these steps in order:
 
 **1. Your independent draft (blind — before the panel).** As panelist #3, form your **own complete
-answer first**, with no knowledge of what Codex or Gemini will say. Read whatever repo context you
+answer first**, with no knowledge of what Codex or agy will say. Read whatever repo context you
 need, then use the **Write tool** to save your full answer to a fresh temp file, e.g.
 `/tmp/gavel-claude-<timestamp>.md`. This file is **your committed panelist submission**: it must
 stand on its own (good enough to ship if the advisors error out) and include your recommendation,
@@ -36,13 +36,13 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/gavel.mjs" fuse --cwd "$(pwd)" --prompt-file
 ```
 
 Notes:
-- Codex explores your repo **read-only**; Gemini runs in an **isolated sandbox and cannot see your
-  files**, so put any code/snippets Gemini needs directly in the task text.
+- Codex explores your repo **read-only**; agy runs **isolated and cannot see your files**, so put any
+  code/snippets agy needs directly in the task text.
 - If a panelist shows `[error]` because its CLI is missing/unauthenticated, continue with whoever
   responded and tell the user they can run `/gavel:setup`. If the panel is empty, stop and say so.
 
 **3. Judge & synthesize.** Now read **three committed submissions** — your own draft file from step
-1, Codex's output, and Gemini's output — and apply the **gavel-synthesis** skill to fuse them. Your
+1, Codex's output, and agy's output — and apply the **gavel-synthesis** skill to fuse them. Your
 draft is a **fixed, co-equal input**, not a baseline to defend and not something to silently rewrite:
 extract each panelist's claims separately, identify consensus, contradictions, partial coverage,
 unique insights, and blind spots, then derive a **single fused answer**. Prefer claims supported by

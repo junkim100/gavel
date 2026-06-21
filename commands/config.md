@@ -9,7 +9,7 @@ Manage gavel settings via the runner's `config` subcommand. Precedence (low→hi
 file (`~/.gavel/config.json`, all projects); add `--project` to write `./.gavel.json` (this repo only).
 
 Keys: `timeout` (seconds), `panel` (comma-separated provider list), `codex.model`, `codex.enabled`,
-`gemini.model`, `gemini.enabled`.
+`agy.model`, `agy.enabled`.
 
 Raw arguments:
 $ARGUMENTS
@@ -30,4 +30,4 @@ running `config show` so the user sees the result.
 
 Note: pinning a model (`set <provider>.model …`) opts that provider out of the automatic fallback to
 the CLI's own default — so only pin a model the account can actually use. Leaving it unset keeps the
-preferred default (`gpt-5.5-pro` / `gemini-3.1-pro`) with auto-fallback. Relay the runner's reminder.
+preferred default (`gpt-5.5-pro` / `gemini-3-pro`) with auto-fallback. Relay the runner's reminder.
