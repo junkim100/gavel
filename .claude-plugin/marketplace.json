@@ -6,7 +6,9 @@
     {
       "name": "gavel",
       "source": ".",
-      "description": "Multi-model fuse (Claude + Codex + agy)."
+      "description": "Multi-model fuse (Claude + Codex + agy).",
+      "homepage": "https://github.com/junkim100/gavel",
+      "repository": "https://github.com/junkim100/gavel"
     }
   ]
 }
