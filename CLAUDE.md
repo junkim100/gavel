@@ -17,8 +17,13 @@ third input and not just a referee of the two advisors, step 1 is **blind drafti
 its own complete answer to a temp file (`/tmp/gavel-claude-<ts>.md`) *before* the panel runs, then
 runs the advisor panel in parallel, then synthesizes all three committed submissions per
 `gavel-synthesis` (its draft is co-equal, not silently rewritten), then takes action. **Only Claude
-writes** to the workspace. The runner (`gavel.mjs fuse`) only queries Codex + agy — Claude's
-contribution is the in-process draft, so there is intentionally **no "claude" provider**.
+writes** to the workspace. By default the runner (`gavel.mjs fuse`) queries only Codex + agy —
+Claude's contribution is the in-process draft, so the default panel stays cross-vendor. There is also
+an **opt-in `claude` provider** (off by default) that adds a *second*, independent Claude as an advisor
+via the `claude` CLI — for a Claude-only setup with no Codex/Gemini subscription. Enable it with
+`gavel config set claude.enabled true` (and narrow the panel, e.g. `gavel config set panel claude`).
+Pointed at the same model as the judge it mostly echoes the draft, so default it to a different tier
+(`GAVEL_CLAUDE_MODEL`, default `sonnet`).
 
 ## Read-only is a per-provider capability (`PROVIDERS[name].isolation`)
 - `codex` → `readonly-sandbox`: runs in the project dir under `-s read-only` (a real OS sandbox), so
@@ -30,6 +35,10 @@ contribution is the in-process draft, so there is intentionally **no "claude" pr
   repo path or making relative/cwd writes into it. This is **isolation, not a hardened sandbox**: agy
   still inherits `$HOME` (needed for auth) and will act on any absolute path it's handed — do NOT feed
   advisors untrusted content expecting confinement. Put context agy needs into the prompt.
+- `claude` → `isolated` (opt-in, off by default): the `claude` CLI has write tools and no OS read-only
+  sandbox, so it runs in the same throwaway temp cwd as agy. gavel never passes
+  `--dangerously-skip-permissions`, so in `--print` mode it can't get write approval, and it can't
+  discover the repo path. Same caveat as agy — isolation, not a hardened sandbox.
 - The `runProvider` harness creates/scrubs/deletes the throwaway dir; unknown isolation values default
   to isolated (fail safe).
 
@@ -45,6 +54,7 @@ pass `--prompt-file`. (`--prompt` exists for tests/programmatic use only.)
 ## CLI invocations (verified; flags vary by version — re-verify before changing)
 - Codex (tested 0.133.0): `codex exec --color never -s read-only --skip-git-repo-check --ephemeral -m <model> -C <cwd> -o <tmp>`, prompt on stdin → read `<tmp>`.
 - agy (tested 1.0.9): `agy --print <prompt> --print-timeout <secs>s [--model <model>]`, prompt passed as the `--print` argv argument (agy has no stdin prompt input), in a throwaway cwd → trimmed stdout. `--print-timeout` is set to the gavel timeout (agy's own default is only 5m).
+- claude (tested 2.1.185): `claude --print [--model <model>]`, prompt on **stdin** → trimmed stdout, in a throwaway cwd. Opt-in advisor (off by default); trusted on exit code 0 (unlike agy). Default model `sonnet`.
 - A provider is `ok` only on **exit code 0** with non-empty output; otherwise a structured error.
   **agy can exit 0 even when it failed** (it prints its OAuth prompt to stdout when not signed in, or
   `unknown model name <m>` for a bad model), so its `run()` detects those signatures instead of
@@ -54,8 +64,10 @@ pass `--prompt-file`. (`--prompt` exists for tests/programmatic use only.)
 ## Config / settings (precedence low→high)
 defaults < `~/.gavel/config.json` < `./.gavel.json` < env < CLI flags. Shape:
 `{ "providers": { "<name>": { "enabled": bool, "model": str } }, "panel": ["<name>"...], "timeout": sec }`
-- Disabled provider → skipped in fuse, not counted "missing" in setup, no warning.
-- Models: `GAVEL_CODEX_MODEL` / `GAVEL_AGY_MODEL`; timeout `GAVEL_TIMEOUT` (seconds, per provider). Default timeout 1800s (30 min).
+- Disabled provider → skipped in fuse, not counted "missing" in setup, no warning. Providers default to
+  enabled; a provider with `optIn: true` (currently `claude`) defaults to **disabled** until you set
+  `<name>.enabled true`, so it never joins the default panel.
+- Models: `GAVEL_CODEX_MODEL` / `GAVEL_AGY_MODEL` / `GAVEL_CLAUDE_MODEL`; timeout `GAVEL_TIMEOUT` (seconds, per provider). Default timeout 1800s (30 min).
 - `gavel config` (subcommand + `/gavel:config`) reads/writes ONE settings file: `set`/`unset <key>` edits `~/.gavel/config.json` by default, or `./.gavel.json` with `--project`; `show` prints the merged effective view + sources. Keys: `timeout`, `panel`, `<provider>.model`, `<provider>.enabled`. It edits a single scope (never the merged view) and refuses to clobber a file that is already invalid JSON.
 - Preferred defaults are codex `gpt-5.5-pro` / agy `gemini-3-pro`. Model availability is account/tier dependent — if the resolved default isn't usable for the account (e.g. `gpt-5.5-pro` is rejected on a ChatGPT account; an agy model the account lacks errors with `unknown model name`), `runProvider` retries once with the model flag omitted so the CLI uses its own default. This fallback fires ONLY for the built-in default (`resolveModel().isDefault`); an explicit flag/env/config model is never swapped. Detection is heuristic (`looksLikeModelError`) and the fallback is logged to stderr.
 

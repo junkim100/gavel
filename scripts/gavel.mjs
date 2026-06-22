@@ -178,6 +178,50 @@ const PROVIDERS = {
       return { ok: true, text: out };
     },
   },
+
+  claude: {
+    bin: "claude",
+    tested: "2.1.185",
+    // OFF by default (see isEnabled): Claude is already the in-process draft + judge, so the default
+    // panel stays 3-way cross-vendor (codex + agy + the running Claude). Opt in — `gavel config set
+    // claude.enabled true` — to add a second, independent Claude as an advisor, e.g. for a Claude-only
+    // setup with no Codex/Gemini subscription.
+    optIn: true,
+    // The `claude` CLI has write tools and NO hard read-only sandbox, so — like agy — we run it ISOLATED
+    // (throwaway cwd, PWD scrubbed; see runProvider). We never pass --dangerously-skip-permissions, so in
+    // --print mode it cannot get write approval, and isolation means it can't find the repo path anyway.
+    // Isolation, NOT a sandbox: it still inherits $HOME, so don't feed advisors untrusted content.
+    isolation: "isolated",
+    // Default to a different tier than a likely-Opus judge so the second opinion is less correlated;
+    // if the account can't use it, runProvider falls back to the claude CLI's own default model.
+    defaultModel: "sonnet",
+    modelEnv: "GAVEL_CLAUDE_MODEL",
+    installHint: "install Claude Code — see https://claude.com/claude-code",
+    authHint: "sign in by running `claude` once",
+    checkAuth() {
+      // Claude Code stores its OAuth token at ~/.claude/.credentials.json; ~/.claude.json is the config
+      // it writes once signed in. Either present → treat as authed (parity with codex/agy creds checks).
+      const cred = path.join(os.homedir(), ".claude", ".credentials.json");
+      const cfg = path.join(os.homedir(), ".claude.json");
+      if (fs.existsSync(cred)) return { authed: true, via: cred };
+      if (fs.existsSync(cfg)) return { authed: true, via: cfg };
+      return { authed: false, via: null };
+    },
+    async run({ prompt, model, cwd, timeoutMs, env }) {
+      // Prompt on stdin (like codex) — never argv — so quotes / $(...) / backticks stay literal. `--print`
+      // emits the answer to stdout (default text format) and exits. model may be empty (fallback) → omit
+      // --model so claude uses its own default.
+      const args = ["--print"];
+      if (model) args.push("--model", model);
+      const r = await runCommand("claude", args, { cwd, timeoutMs, input: prompt, env });
+      if (r.spawnError) return { ok: false, error: `claude CLI not found — ${this.installHint}, then ${this.authHint}.` };
+      if (r.timedOut) return { ok: false, error: `timed out after ${Math.round(timeoutMs / 1000)}s` };
+      if (r.code !== 0) return { ok: false, error: errorSnippet(r) || `claude exited with code ${r.code}` };
+      const out = (r.stdout || "").trim();
+      if (!out) return { ok: false, error: errorSnippet(r) || "claude returned no output" };
+      return { ok: true, text: out };
+    },
+  },
 };
 
 const PROVIDER_NAMES = Object.keys(PROVIDERS);
@@ -212,7 +256,9 @@ function loadConfig(cwd) {
 }
 
 function isEnabled(name, config) {
-  return config.providers?.[name]?.enabled !== false; // enabled unless explicitly disabled
+  const explicit = config.providers?.[name]?.enabled;
+  if (typeof explicit === "boolean") return explicit; // settings win, on or off
+  return PROVIDERS[name]?.optIn !== true;             // default on, unless the provider is opt-in
 }
 
 // Returns { model, isDefault }. isDefault is true only when the model is our built-in defaultModel
@@ -471,7 +517,11 @@ async function cmdSetup(opts) {
   lines.push(`npm:    ${mark(npm.available)} ${npm.version || "not found"}`);
   for (const name of PROVIDER_NAMES) {
     const s = providers[name];
-    if (!s.enabled) { lines.push(`${name}: enabled ✗ (disabled in settings — skipped)`); continue; }
+    if (!s.enabled) {
+      const optInOff = PROVIDERS[name].optIn && config.providers?.[name]?.enabled === undefined;
+      lines.push(`${name}: enabled ✗ (${optInOff ? `opt-in — enable with \`gavel config set ${name}.enabled true\`` : "disabled in settings — skipped"})`);
+      continue;
+    }
     lines.push(
       `${name}: installed ${mark(s.installed)}${s.installed ? ` (${s.version}${s.tooOld ? ` ⚠ older than tested ${s.tested}` : ""})` : ""}` +
       ` · auth ${mark(s.authed)}${s.authVia ? ` (${s.authVia})` : ""}` +
@@ -588,7 +638,7 @@ function cmdConfigShow(cwd, opts) {
   lines.push("Sources (low→high precedence; later overrides earlier):");
   lines.push(`  ~/.gavel/config.json  ${fs.existsSync(userP) ? "present" : "absent"}`);
   lines.push(`  ./.gavel.json         ${fs.existsSync(projP) ? "present" : "absent"}`);
-  lines.push(`  env vars: GAVEL_TIMEOUT, GAVEL_CODEX_MODEL, GAVEL_AGY_MODEL`);
+  lines.push(`  env vars: GAVEL_TIMEOUT, ${PROVIDER_NAMES.map((n) => PROVIDERS[n].modelEnv).join(", ")}`);
   lines.push("");
   lines.push("Change with: gavel config set <key> <value>  (add --project for this repo only)");
   lines.push(`  e.g. gavel config set timeout 600   ·   gavel config set codex.model gpt-5.5`);

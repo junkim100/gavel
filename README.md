@@ -64,15 +64,16 @@ Gavel needs **at least one** advisor usable, but works best with both.
 
 ## How advisors stay read-only
 
-Only Claude modifies your workspace. The two advisors are constrained differently because their CLIs differ:
+Only Claude modifies your workspace. The advisors are constrained differently because their CLIs differ:
 
 - **Codex** runs in your project under its OS read-only sandbox (`-s read-only`) — a hard boundary: it reads your code but cannot change it.
 - **agy** has no equivalent read-only sandbox (`--sandbox` only restricts the terminal, and `--dangerously-skip-permissions` would auto-approve writes), so gavel runs it **isolated**: in a throwaway directory with `PWD`/`OLDPWD` scrubbed, so it can't discover your repo path or make relative writes into it. It answers from the task text — include any code agy should see directly in your task. Note this is isolation, **not a hardened sandbox**: agy still inherits `$HOME` and could act on an absolute path you hand it, so don't paste untrusted content into a fuse expecting confinement.
+- **claude** (optional, off by default — for Claude-only setups) is the same `claude` CLI, which can write, so gavel runs it **isolated** exactly like agy: a throwaway dir, never `--dangerously-skip-permissions`. It answers from the task text, not your repo. Enable it under [Configuration](#configuration).
 - Prompts are passed via a temp file and **never go through a shell** — gavel runs each CLI with `spawn` (no shell), so quotes / `$(...)` / backticks in a task stay literal and can't inject. Codex receives the prompt on **stdin**; agy has no stdin prompt input, so its prompt is passed as a direct process argument (still no shell, so the same injection-safety holds — but it's briefly visible in `ps`, so don't put secrets in an advisor prompt).
 
 ## Configuration
 
-Defaults: Codex `gpt-5.5-pro`, agy `gemini-3-pro`, per-model timeout `1800s` (30 min). These are the *preferred* defaults — if your account can't use them, gavel automatically falls back to whatever model the codex/agy CLI itself defaults to (a model you explicitly set is always respected, never swapped). Override via env vars (`GAVEL_CODEX_MODEL`, `GAVEL_AGY_MODEL`, `GAVEL_TIMEOUT`) or a settings file — `~/.gavel/config.json` (user) or `./.gavel.json` (project).
+Defaults: Codex `gpt-5.5-pro`, agy `gemini-3-pro`, per-model timeout `1800s` (30 min). These are the *preferred* defaults — if your account can't use them, gavel automatically falls back to whatever model the codex/agy CLI itself defaults to (a model you explicitly set is always respected, never swapped). Override via env vars (`GAVEL_CODEX_MODEL`, `GAVEL_AGY_MODEL`, `GAVEL_CLAUDE_MODEL`, `GAVEL_TIMEOUT`) or a settings file — `~/.gavel/config.json` (user) or `./.gavel.json` (project).
 
 Easiest way to change settings is the `config` command (no hand-editing JSON):
 
@@ -101,6 +102,17 @@ Keys: `timeout` (seconds), `panel` (comma-separated), `<provider>.model`, `<prov
 - `panel` selects which providers `/gavel:fuse` queries (default: all enabled).
 
 > agy model availability depends on your account/tier. If a model isn't available, set `GAVEL_AGY_MODEL` to one you can access (run `agy models` to list them).
+
+### Only have a Claude subscription?
+
+No Codex or Gemini? Add a **second Claude** as the advisor. It's an opt-in provider — **off by default**, so it never changes the normal cross-vendor panel for everyone else:
+
+```bash
+/gavel:config set claude.enabled true     # turn on the claude advisor
+/gavel:config set panel claude            # fuse with just Claude (use "claude,agy" if you also have Gemini)
+```
+
+Now `/gavel:fuse` runs your in-editor Claude (draft + judge) plus a second Claude through the `claude` CLI. Point that second one at a **different tier** so it's an independent opinion rather than an echo of the draft — it defaults to `sonnet`; override with `GAVEL_CLAUDE_MODEL` or `claude.model`. Honest caveat: two Claudes of the same family are less diverse than a true cross-vendor panel, so if you *can* add Gemini (the `agy` CLI signs in with a Google account — no API key), that's the bigger win.
 
 ## Adding another model
 
