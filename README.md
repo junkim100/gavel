@@ -98,10 +98,9 @@ Keys: `timeout` (seconds), `panel` (comma-separated), `<provider>.model`, `<prov
 }
 ```
 
+- Settings are **saved to disk and persist across all sessions** (not per-session): `set` writes `~/.gavel/config.json` (all projects) by default, or `./.gavel.json` with `--project` (this repo only). Env vars and CLI flags are the only per-run overrides.
 - Set a provider `"enabled": false` to skip it everywhere with **no repeated warnings**.
 - `panel` selects which providers `/gavel:fuse` queries (default: all enabled).
-
-> agy model availability depends on your account/tier. If a model isn't available, set `GAVEL_AGY_MODEL` to one you can access (run `agy models` to list them).
 
 ### Only have a Claude subscription?
 
