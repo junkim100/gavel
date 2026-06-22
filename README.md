@@ -2,12 +2,12 @@
 
 <p align="center">
   <b>Multi-model fusion for Claude Code.</b><br>
-  Ask claude + codex + agy in parallel, then judge their answers into one and act on it.
+  Ask Claude + Codex + agy in parallel, then judge their answers into one and act on it.
 </p>
 
 ---
 
-`/gavel:fuse <task>` asks **three** models the same thing: the **Claude Code model you're running**, **OpenAI Codex**, and **`agy`**. Codex and agy are **read-only advisors**; Claude is **panelist #3 and the actor** — the three answers are judged and synthesized into a single fused answer, which is then **acted on**. Only Claude writes to your workspace.
+`/gavel:fuse <task>` asks **three** models the same thing: the **Claude Code model you're running**, **OpenAI Codex**, and **agy**. Codex and agy are **read-only advisors**; Claude is **panelist #3, the judge, and the actor**. The three answers are synthesized into one fused answer, which Claude then acts on — and only Claude ever writes to your workspace.
 
 It runs the models through their **local CLIs** (`codex`, `agy`), reusing your existing logins. No API keys to wire up, no MCP servers, no background jobs.
 
@@ -46,7 +46,7 @@ git clone https://github.com/junkim100/gavel.git
 /gavel:setup
 ```
 
-Reports whether `codex` and `agy` are installed, authenticated, and recent enough, and offers to install codex if it's missing. Authentication:
+Reports whether `codex` and `agy` are installed, authenticated, and recent enough, and offers to install Codex if it's missing. Authentication:
 
 - **Codex** — `!codex login` (install: `npm install -g @openai/codex`).
 - **agy** — run `!agy` once to sign in (Google OAuth). Install the `agy` CLI from <https://antigravity.google> (it isn't an npm package).
@@ -73,7 +73,7 @@ Only Claude modifies your workspace. The advisors are constrained differently be
 
 ## Configuration
 
-Defaults: Codex `gpt-5.5-pro`, agy `gemini-3-pro`, per-model timeout `1800s` (30 min). These are the *preferred* defaults — if your account can't use them, gavel automatically falls back to whatever model the codex/agy CLI itself defaults to (a model you explicitly set is always respected, never swapped). Override via env vars (`GAVEL_CODEX_MODEL`, `GAVEL_AGY_MODEL`, `GAVEL_CLAUDE_MODEL`, `GAVEL_TIMEOUT`) or a settings file — `~/.gavel/config.json` (user) or `./.gavel.json` (project).
+Defaults: Codex `gpt-5.5-pro`, agy `gemini-3-pro`, per-model timeout `1800s` (30 min). These are the *preferred* defaults — if your account can't use them, gavel automatically falls back to whatever model the Codex/agy CLI itself defaults to (a model you explicitly set is always respected, never swapped). Override via env vars (`GAVEL_CODEX_MODEL`, `GAVEL_AGY_MODEL`, `GAVEL_CLAUDE_MODEL`, `GAVEL_TIMEOUT`) or a settings file — `~/.gavel/config.json` (user) or `./.gavel.json` (project).
 
 Easiest way to change settings is the `config` command (no hand-editing JSON):
 
